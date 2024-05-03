@@ -9,7 +9,7 @@ pipeline {
         stage('Process value') {
             steps {
                 script {
-                    def value = params.$MR_NUMBER.split(',')
+                    def value = $MR_NUMBER.split(',')
                     for (number in value) {
                         
                         echo "Processing number: ${number}"
