@@ -16,6 +16,9 @@ pipeline {
         stage('Cherry-pick and SSH Queries') {
             steps {
                 script {
+                    def mrNumbers = env.MR_NUMBER.split(',')
+                    for (def mrNumber in mrNumbers) {
+                        env.MR_NUMBER = mrNumber
                     // Fetch the specific change from Gerrit
                     def sshOutput = sh(script: "ssh -p ${env.SSH_PORT} ${env.SSH_HOST} gerrit query --format=JSON --current-patch-set change:${env.MR_NUMBER}",
                                        returnStdout: true).trim()
@@ -91,7 +94,12 @@ pipeline {
                             echo "Cherry-pick failed. Please check the logs for details."
                         }
                     }
+
+                    }
                 }
+
+
+
             }
         }
     }
