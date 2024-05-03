@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
 
-      MR_NUMBER = "${env.MR_NUMBER}"
+      MR_NUMBER = "test,demo,new"
 
     }
     stages {
