@@ -1,103 +1,90 @@
 pipeline {
     agent {
-        label 'cicd_server'
+        node {
+            label "cicd_server"
+        }
     }
-    
+    options {
+        timestamps()
+    }
     environment {
-        MR_NUMBER = '722' // Default MR number
-        REPO_PATH = '/mnt/mirror/a14_dev_build_test/snapdragon-auto-gen3-la/apps_vendor/LINUX/android/vendor/alpine/hardware/implements/vehicle'
-        SSH_HOST = 'ayeshas1@10.52.96.11'
-        SSH_PORT = '29418'
-        GIT_REMOTE_URL = 'ssh://ayeshas1@10.52.96.11:29418/platform/vendor/alpine/hardware/implements/vehicle'
-        BRANCH_NAME = '14-8155-happi-es41-bringup-dev'
+        NONE_MSG = "none"
+        err_msg = ""
+        ISP_JOB_NAME = "A14_ISP_OfficialBuild"
+        //ICB_JOB_NAME = "32_ICB_OfficialBuild_A14"
+        VERSION_6155 = ""
+        VERSION_8155 = ""
+        ISP_NODE_NAME = "HM_Official_ISP_servers"
+        //ICB_NODE_NAME = "HM_Official_ICB_servers"
+        OMEGA_YML_NAME = "BuildInfo_8155_LA351.yml"
+        NONOMEGA_YML_NAME = "BuildInfo_8155_LA351_NonOmega.yml"
     }
-    
+
     stages {
-        stage('SSH Queries') {
+        stage('Check parameters') {
             steps {
                 script {
-                    // Fetch the specific change from Gerrit
-                    def sshOutput = sh(script: "ssh -p ${env.SSH_PORT} ${env.SSH_HOST} gerrit query --format=JSON --current-patch-set change:${env.MR_NUMBER}",
-                                       returnStdout: true).trim()
-
-                    // Print the SSH query output
-                    echo "SSH Query Output:"
-                    echo sshOutput
-
-                    // Parse the JSON output
-                    def jsonOutput = readJSON text: sshOutput
-
-                    // Extract ref, project details, and URL
-                    def currentPatchSet = jsonOutput.currentPatchSet
-                    if (currentPatchSet) {
-                        def ref = currentPatchSet.ref
-                        def project = jsonOutput.project
-                        def url = jsonOutput.url
-
-                        // Set environment variables for use in the next stage
-                        env.REF = ref
-                        env.PROJECT = project
-                        env.URL = url
-
-                        // Print the extracted information
-                        echo "REF: ${env.REF}"
-                        echo "Project: ${env.PROJECT}"
-                        echo "URL: ${env.URL}"
-                    } else {
-                        echo "Failed to retrieve the patchset and change number from Gerrit. Please check if the change exists."
-                        currentBuild.result = 'FAILURE'
-                        error "Failed to retrieve the patchset and change number from Gerrit."
+                    if (INPUT_ISP_VERSION.length() <= 2) {
+                        err_msg = "parameter error ISP_VERSION."
+                        error(err_msg)
                     }
+                    VERSION_6155 = INPUT_ISP_VERSION.substring(0,INPUT_ISP_VERSION.length()-2) + "Cx"
+                    VERSION_8155 = INPUT_ISP_VERSION.substring(0,INPUT_ISP_VERSION.length()-2) + "Dx"
+                    println VERSION_6155
+                    println VERSION_8155
                 }
             }
         }
-        
-        stage('Cherry-pick') {
-            steps {
-                script {
-                    // Change directory to the repository
-                    dir(env.REPO_PATH) {
-                        // Check if there's an ongoing cherry-pick operation
-                        def cherryPickInProgress = sh(script: "git status --short | grep -q '^U'",
-                                                       returnStatus: true)
-                        
-                        if (cherryPickInProgress == 0) {
-                            // Abort the ongoing cherry-pick
-                            sh "git cherry-pick --abort"
-                            echo "Aborted the ongoing cherry-pick."
-                        }
-                        
-                        // Fetch latest changes from the remote repository
-                        sh "git fetch --all"
-                        
-                        // Checkout the target branch
-                        sh "git checkout -f ${env.BRANCH_NAME}"
-                        
-                        // Display the latest commit on the target branch
-                        sh "git log -1"
-                        
-                        // Proceed with the cherry-pick process without committing
-                        def cherryPickResult = sh(script: "git fetch ${env.GIT_REMOTE_URL} refs/changes/${env.REF.split('/')[2]}/${env.MR_NUMBER}/${env.REF.split('/')[4]} && git cherry-pick --no-commit FETCH_HEAD",
-                                                   returnStatus: true)
-                        
-                        // Check if the cherry-pick was successful
-                        if (cherryPickResult == 0) {
-                            // Check if there are any unmerged files
-                            def unmergedFiles = sh(script: "git status --short | grep -q '^UU'",
-                                                   returnStatus: true)
-                            
-                            if (unmergedFiles == 0) {
-                                echo "Cherry-pick successful."
-                            } else {
-                                echo "Conflict occurred during cherry-pick. Please resolve conflicts manually."
-                                return
-                            }
-                        } else {
-                            echo "Cherry-pick failed. Please check the logs for details."
+        stage('Execute Build') {
+            /* Removed the parallel block */
+            
+            stage('ISP 8155 userdebug') {
+                when {
+                    equals expected: "true", actual: ENABLE_ISP_8155_USERDEBUG
+                }
+                steps {
+                    script {
+                        if (BUILD_RULE == "Regular") {
+                            build(job: "${ISP_JOB_NAME}", parameters: [
+                                string(name: "BUILD_BOARD", value: "8155"),
+                                string(name: "BUILD_TYPE", value: "userdebug"),
+                                string(name: "BUILD_VERSION", value: "${VERSION_8155}"),
+                                string(name: "MAIN_NODE", value: "${ISP_8155_USERDEBUG_NODE}")
+                            ])
+                        } else if (BUILD_RULE == "Freedom") {
+                            build(job: "${ISP_JOB_NAME}", parameters: [
+                                string(name: "BUILD_BOARD", value: "8155"),
+                                string(name: "BUILD_TYPE", value: "userdebug"),
+                                string(name: "BUILD_VERSION", value: "${VERSION_8155}")
+                            ])
                         }
                     }
                 }
             }
+            stage('ISP 8155 user') {
+                when {
+                    equals expected: "true", actual: ENABLE_ISP_8155_USER
+                }
+                steps {
+                    script {
+                        if (BUILD_RULE == "Regular") {
+                            build(job: "${ISP_JOB_NAME}", parameters: [
+                                string(name: "BUILD_BOARD", value: "8155"),
+                                string(name: "BUILD_TYPE", value: "user"),
+                                string(name: "BUILD_VERSION", value: "${VERSION_8155}"),
+                                string(name: "MAIN_NODE", value: "${ISP_8155_USER_NODE}")
+                            ])
+                        } else if (BUILD_RULE == "Freedom") {
+                            build(job: "${ISP_JOB_NAME}", parameters: [
+                                string(name: "BUILD_BOARD", value: "8155"),
+                                string(name: "BUILD_TYPE", value: "user"),
+                                string(name: "BUILD_VERSION", value: "${VERSION_8155}")
+                            ])
+                        }
+                    }
+                }
+            }
+            /* Commented out ICB stages as requested (assuming they were within the parallel block) */
         }
     }
 }
